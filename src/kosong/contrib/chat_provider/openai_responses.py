@@ -30,7 +30,13 @@ from openai.types.shared.reasoning import Reasoning
 from openai.types.shared.reasoning_effort import ReasoningEffort
 from openai.types.shared_params.responses_model import ResponsesModel
 
-from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
+from kosong.chat_provider import (
+    ChatProvider,
+    StreamedMessagePart,
+    StreamInterruptedError,
+    ThinkingEffort,
+    TokenUsage,
+)
 from kosong.chat_provider.openai_common import convert_error, thinking_effort_to_reasoning_effort
 from kosong.contrib.chat_provider.common import ToolMessageConversion
 from kosong.message import (
@@ -484,6 +490,7 @@ class OpenAIResponsesStreamedMessage:
         self, response: AsyncStream[ResponseStreamEvent]
     ) -> AsyncIterator[StreamedMessagePart]:
         """Convert streaming Responses events into message parts."""
+        received_completed = False
         try:
             async for chunk in response:
                 if chunk.type == "response.output_text.delta":
@@ -511,9 +518,15 @@ class OpenAIResponsesStreamedMessage:
                 elif chunk.type == "response.reasoning_summary_text.delta":
                     yield ThinkPart(think=chunk.delta)
                 elif chunk.type == "response.completed":
+                    received_completed = True
                     self._usage = chunk.response.usage
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+        if not received_completed:
+            raise StreamInterruptedError(
+                "Stream ended unexpectedly without response.completed event"
+            )
 
 
 if __name__ == "__main__":

@@ -62,6 +62,7 @@ from kosong.chat_provider import (
     ChatProvider,
     ChatProviderError,
     StreamedMessagePart,
+    StreamInterruptedError,
     ThinkingEffort,
     TokenUsage,
 )
@@ -376,6 +377,7 @@ class AnthropicStreamedMessage:
         self,
         manager: AsyncStream[RawMessageStreamEvent],
     ) -> AsyncIterator[StreamedMessagePart]:
+        received_stop = False
         try:
             async with manager as stream:
                 async for event in stream:
@@ -419,9 +421,15 @@ class AnthropicStreamedMessage:
                         if event.usage:
                             self._update_usage(event.usage)
                     elif isinstance(event, MessageStopEvent):
+                        received_stop = True
                         continue
         except AnthropicError as exc:
             raise _convert_error(exc) from exc
+
+        if not received_stop:
+            raise StreamInterruptedError(
+                "Stream ended unexpectedly without message_stop event"
+            )
 
 
 def _convert_tool(tool: Tool) -> ToolParam:

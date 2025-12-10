@@ -20,6 +20,7 @@ from kosong.chat_provider import (
     ChatProviderError,
     StreamedMessage,
     StreamedMessagePart,
+    StreamInterruptedError,
     ThinkingEffort,
     TokenUsage,
 )
@@ -276,6 +277,7 @@ class KimiStreamedMessage(StreamedMessage):
         self,
         response: AsyncIterator[ChatCompletionChunk],
     ) -> AsyncIterator[StreamedMessagePart]:
+        finish_reason: str | None = None
         try:
             async for chunk in response:
                 if chunk.id:
@@ -286,7 +288,11 @@ class KimiStreamedMessage(StreamedMessage):
                 if not chunk.choices:
                     continue
 
-                delta = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+
+                delta = choice.delta
 
                 # convert thinking content
                 if reasoning_content := getattr(delta, "reasoning_content", None):
@@ -319,6 +325,11 @@ class KimiStreamedMessage(StreamedMessage):
                         pass
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+        if finish_reason is None:
+            raise StreamInterruptedError(
+                "Stream ended unexpectedly without finish_reason"
+            )
 
 
 if __name__ == "__main__":

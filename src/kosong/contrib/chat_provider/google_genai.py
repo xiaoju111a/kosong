@@ -32,6 +32,7 @@ from kosong.chat_provider import (
     ChatProvider,
     ChatProviderError,
     StreamedMessagePart,
+    StreamInterruptedError,
     ThinkingEffort,
     TokenUsage,
 )
@@ -237,6 +238,7 @@ class GoogleGenAIStreamedMessage:
         self,
         response_stream: AsyncIterator[GenerateContentResponse],
     ) -> AsyncIterator[StreamedMessagePart]:
+        finish_reason: str | None = None
         try:
             async for response in response_stream:
                 # Extract ID from first response
@@ -249,6 +251,10 @@ class GoogleGenAIStreamedMessage:
 
                 # Process candidates
                 for candidate in response.candidates or []:
+                    # Track finish_reason from candidates
+                    if candidate.finish_reason:
+                        finish_reason = str(candidate.finish_reason)
+
                     parts = candidate.content.parts if candidate.content else None
                     if not parts:
                         continue
@@ -257,6 +263,11 @@ class GoogleGenAIStreamedMessage:
                             yield message_part
         except genai_errors.APIError as exc:
             raise _convert_error(exc) from exc
+
+        if finish_reason is None:
+            raise StreamInterruptedError(
+                "Stream ended unexpectedly without finish_reason"
+            )
 
     def _process_part(self, part: Part):
         """Process a single part and yield message components (synchronous generator).

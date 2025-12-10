@@ -14,7 +14,13 @@ from openai.types.chat import (
 )
 from typing_extensions import TypedDict
 
-from kosong.chat_provider import ChatProvider, StreamedMessagePart, ThinkingEffort, TokenUsage
+from kosong.chat_provider import (
+    ChatProvider,
+    StreamedMessagePart,
+    StreamInterruptedError,
+    ThinkingEffort,
+    TokenUsage,
+)
 from kosong.chat_provider.openai_common import (
     convert_error,
     thinking_effort_to_reasoning_effort,
@@ -248,6 +254,7 @@ class OpenAILegacyStreamedMessage:
         self,
         response: AsyncIterator[ChatCompletionChunk],
     ) -> AsyncIterator[StreamedMessagePart]:
+        finish_reason: str | None = None
         try:
             async for chunk in response:
                 if chunk.id:
@@ -258,7 +265,11 @@ class OpenAILegacyStreamedMessage:
                 if not chunk.choices:
                     continue
 
-                delta = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+
+                delta = choice.delta
 
                 # convert thinking content
                 reasoning_key = self._reasoning_key
@@ -292,6 +303,11 @@ class OpenAILegacyStreamedMessage:
                         pass
         except (OpenAIError, httpx.HTTPError) as e:
             raise convert_error(e) from e
+
+        if finish_reason is None:
+            raise StreamInterruptedError(
+                "Stream ended unexpectedly without finish_reason"
+            )
 
 
 if __name__ == "__main__":

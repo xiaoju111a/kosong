@@ -124,3 +124,7 @@ class APIStatusError(ChatProviderError):
 
 class APIEmptyResponseError(ChatProviderError):
     """The error raised when the API returns an empty response."""
+
+
+class StreamInterruptedError(ChatProviderError):
+    """The error raised when a stream ends unexpectedly without a proper stop event."""
